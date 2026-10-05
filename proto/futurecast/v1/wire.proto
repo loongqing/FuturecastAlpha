@@ -1,0 +1,126 @@
+syntax = "proto3";
+
+package futurecast.v1;
+
+option go_package = "github.com/loongqing/FuturecastAlpha/gen/futurecastv1;futurecastv1";
+
+import "futurecast/v1/common.proto";
+import "futurecast/v1/message.proto";
+
+// ---------- 握手 ----------
+
+message Hello {
+  uint32 proto_version = 1;
+  uint32 min_proto = 2;
+  NodeID node_id = 3;
+  PubKey public_key = 4;
+  repeated string listen_addrs = 5;  // 空 = 本节点不监听（如 sealed 超管）
+  Hash admin_set_hash = 6;
+  uint64 admin_set_generation = 7;
+  int64 issued_at_unix_nanos = 8;
+  uint64 nonce = 9;
+  bytes self_signature = 10;         // 对 canonical(本消息除本字段) 签名
+}
+
+message Ping { uint64 nonce = 1; int64 issued_at_unix_nanos = 2; }
+message Pong { uint64 nonce = 1; int64 issued_at_unix_nanos = 2; }
+
+// ---------- 发现 ----------
+
+message FindNode {
+  NodeID target = 1;
+  uint32 want = 2;
+}
+
+message Nodes {
+  NodeID target = 1;
+  repeated NodeInfo nodes = 2;
+}
+
+// ---------- 传播 ----------
+
+message Push { Envelope envelope = 1; }
+
+message Inv {
+  string topic = 1;
+  repeated Hash msg_ids = 2;         // 完整 32B，便于精确比对
+  int64 since_unix_nanos = 3;
+}
+
+message Get { repeated Hash msg_ids = 1; }
+
+message Msg { repeated Envelope envelopes = 1; }
+
+// ---------- 大内容 ----------
+
+message GetContent { Hash content_id = 1; uint32 from_index = 2; uint32 count = 3; }
+
+// ---------- 封存投递与信箱 ----------
+
+// 超管 → 中继：点对点提交一个封存副本
+message SealedSubmit {
+  SealedPayload sealed = 1;
+  bytes submitter_self_signature = 2;  // 超管节点密钥对 canonical(sealed) 的签名（仅证明"是本连接对端提交的"）
+}
+
+// 中继 → 超管：受理回执
+message SealedReceipt {
+  Hash inbox_rendezvous_id = 1;
+  Hash accepted_msg_id = 2;            // 中继解封后算出的内层 msg_id
+  fixed64 scheduled_publish_ms = 3;    // 抖动后的计划发布时间
+  NodeID relay_node_id = 4;
+  bytes self_signature = 5;
+}
+
+message MailboxStore {
+  Hash rendezvous_id = 1;
+  repeated Envelope envelopes = 2;
+  bytes self_signature = 3;
+}
+
+message MailboxGet {
+  Hash rendezvous_id = 1;
+  int64 since_unix_nanos = 2;
+  uint32 limit = 3;
+}
+
+message MailboxData {
+  Hash rendezvous_id = 1;
+  repeated Envelope envelopes = 2;
+  bool has_more = 3;
+}
+
+// ---------- 控制 ----------
+
+message Bye { string reason = 1; }
+
+message Error {
+  uint32 code = 1;
+  string message = 2;
+  bool retryable = 3;
+}
+
+// Frame 是传输层的顶层消息：4 字节大端长度前缀 + protobuf 编码的 Frame。
+message Frame {
+  oneof body {
+    Hello hello = 1;
+    Ping ping = 2;
+    Pong pong = 3;
+    FindNode find_node = 10;
+    Nodes nodes = 11;
+    PeerExchange peer_exchange = 12;
+    Push push = 20;
+    Inv inv = 21;
+    Get get = 22;
+    Msg msg = 23;
+    GetContent get_content = 24;
+    ContentChunk content_chunk = 25;
+    SealedSubmit sealed_submit = 26;
+    SealedReceipt sealed_receipt = 27;
+    MailboxStore mailbox_store = 28;
+    MailboxGet mailbox_get = 29;
+    MailboxData mailbox_data = 30;
+    Bye bye = 40;
+    Error error = 41;
+  }
+}

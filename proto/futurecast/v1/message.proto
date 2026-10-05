@@ -1,0 +1,254 @@
+syntax = "proto3";
+
+package futurecast.v1;
+
+option go_package = "github.com/loongqing/FuturecastAlpha/gen/futurecastv1;futurecastv1";
+
+import "futurecast/v1/common.proto";
+
+enum MessageKind {
+  MESSAGE_KIND_UNSPECIFIED = 0;
+  MESSAGE_KIND_ADMIN_BROADCAST = 1;    // 超管广播（需门限签名）
+  MESSAGE_KIND_ADMIN_SET = 2;          // 管理员集合轮换（需旧集合门限）
+  MESSAGE_KIND_TOPIC_POLICY = 3;       // 主题策略
+  MESSAGE_KIND_NODE_ANNOUNCE = 10;     // 节点动态
+  MESSAGE_KIND_PEER_EXCHANGE = 11;     // 邻居互推
+  MESSAGE_KIND_LIVENESS = 12;
+  MESSAGE_KIND_CONTENT_MANIFEST = 20;  // 大内容清单
+  MESSAGE_KIND_CHUNK = 21;             // 内容分片
+  // 封存信封：外层是普通节点消息，payload.sealed.inner_body 内是完整的
+  // 管理员 SignedBody（含 2-of-3 签名）。中继发布时不携带任何跨副本共享
+  // 的明文字段，保证多份副本在公网上不可互相关联。
+  // 定向广播：只有指定收件人能解密正文（新增）。
+  // 外层 DirectedBody 明文且被门限签名（中继可独立验签，无需解密）；
+  // 内层 kernel 用一次性 content_key 加密，content_key 逐收件人封装。
+  MESSAGE_KIND_DIRECTED_BROADCAST = 4;
+  MESSAGE_KIND_SEALED = 30;
+}
+
+message AdminSet {
+  uint64 generation = 1;
+  repeated AdminKey keys = 2;
+  SigningPolicy policy = 3;
+  Hash previous_set_hash = 4;        // 创世为空
+  int64 created_at_unix_nanos = 5;
+  RelayPolicy relay_policy = 6;
+  repeated Inbox inboxes = 7;
+  // signers 由上一代 AdminSet 的 >=threshold 把密钥产生，用于轮换授权。
+  // 注意：signers 不参与 AdminSet 自身的规范化摘要（signer_set_hash）。
+  repeated Signature signers = 8;
+  // 随创世集一起分发的主题策略，让节点首次启动就知道哪些主题可写、是否加密。
+  // 后续变更通过 MESSAGE_KIND_TOPIC_POLICY 广播。
+  repeated TopicPolicy topic_policies = 9;
+}
+
+message NodeAnnounce {
+  NodeID node_id = 1;
+  repeated string addrs = 2;         // sealed/signed 超管此字段恒为空
+  bool address_public = 3;           // 对应 admin.mode = public
+  // rendezvous_hint 已废弃，**实现必须留空**。
+  // 保留字段号以避免重编号；任何填充都会暴露"本节点是 sealed 超管"这一身份类别。
+  Hash rendezvous_hint = 4;
+  int64 seq = 5;
+  int64 issued_at_unix_nanos = 6;
+  bytes self_signature = 7;          // 对 canonical(除本字段外) 的签名
+}
+
+message NodeInfo {
+  NodeID node_id = 1;
+  // ed25519 公钥。必须携带：定向广播要求超管知道收件人的公钥，
+  // 而收件人往往不与超管直连，只能靠邻居互推获得。
+  // 接收方必须校验 SHA-256(pub) == node_id，否则任何人都能伪造他人身份条目。
+  bytes pub = 6;
+  string addr = 2;
+  int64 last_seen_unix_nanos = 3;
+  int64 expires_at_unix_nanos = 4;
+  int64 seq = 5;
+}
+
+message PeerExchange {
+  repeated NodeInfo nodes = 1;
+  bytes self_signature = 2;          // 对 canonical(nodes) 的签名
+}
+
+message Liveness {
+  int64 issued_at_unix_nanos = 1;
+  uint64 nonce = 2;
+}
+
+message ContentManifest {
+  Hash content_id = 1;
+  uint64 total_size = 2;
+  uint32 chunk_size = 3;
+  uint32 chunk_count = 4;
+  bytes merkle_root = 5;
+}
+
+message ContentChunk {
+  Hash content_id = 1;
+  uint32 index = 2;
+  bytes data = 3;
+}
+
+// 消息文本载荷（payload oneof 的一个分支）
+message TextPayload {
+  string media_type = 1;             // text/plain, text/markdown, application/json
+  string body = 2;
+  repeated Attachment attachments = 3;
+}
+
+message Attachment {
+  string name = 1;
+  string media_type = 2;
+  Hash content_id = 3;
+  uint64 size = 4;
+}
+
+// 封存载荷。两种用途共用同一结构：
+//
+//  1. 提交通道（超管 → 中继）：字段 1-5 有值，ciphertext 是对收件人中继
+//     的 X25519 加密结果。
+//  2. 发布通道（中继 → 公网，kind = MESSAGE_KIND_SEALED）：只有 inner_body
+//     有值，是对内层管理员 SignedBody 的确定性序列化，不做二次加密 ——
+//     机密性由 payload.cipher（主题级 AES-256-GCM）或 sealed 模式的
+//     外层封存策略保证；未持有主题密钥的节点只能看到"某节点发了一条消息"。
+message SealedPayload {
+  // 提交通道：rendezvous 信箱 ID。
+  // 发布通道：对 inner_body 的 SHA-256 承诺值 —— 它同时被外层节点消息的
+  // 签名覆盖，因此中继无法把内层正文调包成另一条消息。
+  Hash inbox_rendezvous_id = 1;
+  fixed64 epoch = 2;
+  bytes ephemeral_x25519 = 3;
+  bytes ciphertext = 4;              // AES-256-GCM(SignedBody)，提交通道使用
+  fixed64 jitter_hint_ms = 5;
+  // 发布通道（未加密）：内层管理员 SignedBody 的确定性序列化。
+  // 仅当主题未配置密钥时使用 —— 此时机密性缺失，节点会在启动时告警。
+  bytes inner_body = 6;
+  // 发布通道（已加密）：对 inner_body 的 AES-256-GCM 密文，
+  // 密钥由主题共享密钥派生。字段布局与提交通道的 ciphertext 一致。
+  bytes inner_ciphertext = 7;
+  // inner_ciphertext 使用的 nonce。
+  bytes inner_nonce = 8;
+  // 加密时用的主题密钥标识，便于订阅者选择正确的密钥。
+  KeyID topic_key_id = 9;
+}
+
+// ---------- 定向广播 ----------
+
+// DirectRecipient 是"给某个收件人"的一份密钥封装。
+//
+// 隐私设计：**不出现收件人的 NodeID 或公钥明文**。
+//   - eph_pub        每次随机，杜绝跨消息指纹
+//   - wrapped_key    = AES-GCM(HKDF(X25519(eph, 收件人公钥)), content_key)
+//   - recipient_tag  只用来快速筛选槽位；其公式涉及本消息独有的
+//                    content_key 与明文 sealed_key，因此**只有真正能解开的
+//                    收件人**才能算出自己的 tag，外界无法枚举名单。
+message DirectRecipient {
+  bytes eph_pub = 1;
+  bytes wrapped_key = 2;
+  // recipient_tag = HMAC-SHA256(blind_key, "futurecast/v1/dirtag\x00" || node_id)[:16]
+  //   blind_key = HKDF-SHA256(content_key, salt=blind_salt, info="fc/v1/directedblind", 32)
+  // 只有真正的收件人（能解出 content_key 的人）才算得出自己的 tag，
+  // 因此外界无法枚举名单；同一收件人在不同消息里的 tag 不同，无法跨消息关联。
+  bytes recipient_tag = 3;
+}
+
+// DirectedBody 是定向广播的**外层**：明文、被超管门限签名。
+//
+// 之所以把"可验签的部分"与"机密正文"分开：
+//   - 中继/任何节点都能独立验证它确实来自超管（满足"所有消息经签名"）；
+//   - 但谁都读不到正文 —— 只有算出正确 recipient_tag 并解开 wrapped_key 的收件人例外。
+message DirectedBody {
+  uint32 proto_version = 1;
+  MessageKind kind = 2;              // 恒为 MESSAGE_KIND_DIRECTED_BROADCAST
+  Hash msg_id = 3;                   // = SHA-256(DomainSignedBody || deterministic(this, 去 msg_id/去 signers))
+  int64 created_at_unix_nanos = 4;
+  int64 expires_at_unix_nanos = 5;
+  bytes nonce = 6;
+  uint64 admin_set_generation = 7;
+  Hash signer_set_hash = 8;
+  SigningPolicy policy = 9;
+  int32 max_hops = 10;
+  repeated Signature signers = 11;
+  repeated DirectRecipient recipients = 12;
+  bytes ciphertext = 13;             // AES-256-GCM(content_key, kernel)
+  bytes content_nonce = 14;          // 12B
+  uint32 recipient_count = 15;       // 声明收件人总数（用于一致性校验）
+  bytes blind_salt = 16;             // 16B 随机，参与 tag 派生，保证消息间不可关联
+}
+
+// DirectedKernel 是定向广播的**内层**：只有收件人能解出的机密内容。
+message DirectedKernel {
+  string topic = 1;
+  string media_type = 2;
+  string body = 3;
+  int64 created_at_unix_nanos = 4;
+  int64 expires_at_unix_nanos = 5;
+  bytes nonce = 6;
+  // field 7 (outer_msg_id) 已废弃并保留号：它曾被设计为"把密文绑到外层消息"，
+  // 但实际的绑定由内层/槽位 AAD 里的 blind_salt 完成 —— blind_salt 每消息随机
+  // 且被门限签名覆盖，因此该字段从未需要被填充，属于死字段，予以删除。
+  reserved 7;
+  reserved "outer_msg_id";
+}
+
+message Payload {
+  oneof payload {
+    TextPayload text = 1;
+    bytes binary = 2;
+    NodeAnnounce node_announce = 3;
+    PeerExchange peer_exchange = 4;
+    Liveness liveness = 5;
+    AdminSet admin_set = 6;
+    TopicPolicy topic_policy = 7;
+    ContentManifest content_manifest = 8;
+    ContentChunk content_chunk = 9;
+    SealedPayload sealed = 10;
+    DirectedBody directed = 11;
+  }
+}
+
+// SignedBody 是签名保护的全部内容。msg_id = SHA-256(DomainSep || protobuf(SignedBody))
+message SignedBody {
+  uint32 proto_version = 1;
+  MessageKind kind = 2;
+  string topic = 3;
+  Hash msg_id = 4;
+  int64 created_at_unix_nanos = 5;
+  int64 expires_at_unix_nanos = 6;
+  bytes nonce = 7;                   // 16 字节
+  uint64 admin_set_generation = 8;
+  Hash signer_set_hash = 9;          // SHA-256(AdminSet)
+  SigningPolicy policy = 10;
+  NodeID author = 11;                // 节点消息的作者；管理员广播留空
+  // author_pub 是作者的 ed25519 公钥，绑定在签名覆盖范围内。
+  // 之所以必须随消息携带：Gossip 场景下消息会被中继转发，
+  // 接收方的直接对端是"转发者"而非"作者"，无法用连接身份代替作者身份。
+  // 携带公钥不泄露额外信息 —— author(NodeID) 本身就是它的哈希，
+  // 且作者身份无论如何都已出现在消息里。
+  bytes author_pub = 15;
+  repeated Signature signers = 12;
+  Payload payload = 13;
+  int64 max_hops = 14;
+}
+
+// Envelope 是路由外壳，中转节点可改写其非签名字段。
+//
+// body 与 directed_body 二选一：
+//   - body：普通消息 / 封存消息，被签名对象是 SignedBody；
+//   - directed_body：定向广播，被签名对象是 DirectedBody（外层明文可验签，
+//     正文在 DirectedBody.ciphertext 里，只有收件人能解）。
+//
+// 之所以不复用 SignedBody 再套一层：那会导致同一条内容需要签两次
+// （一次签 DirectedBody、一次签外层 SignedBody），而门限签名需要人工收集，
+// 双签会显著抬高签发成本，也扩大了出错面。
+message Envelope {
+  Hash msg_id = 1;
+  uint32 hops = 2;
+  uint32 max_hops = 3;
+  int64 first_seen_unix_nanos = 4;
+  fixed64 relay_tag = 5;             // HMAC 轮换标签，不泄露拓扑
+  ContentCipher cipher = 6;
+  SignedBody body = 7;
+  DirectedBody directed_body = 8;
+}

@@ -1,0 +1,102 @@
+syntax = "proto3";
+
+package futurecast.v1;
+
+option go_package = "github.com/loongqing/FuturecastAlpha/gen/futurecastv1;futurecastv1";
+
+// ---------- 基础类型 ----------
+
+// Hash 一律为 SHA-256，长度 32 字节。
+message Hash { bytes value = 1; }
+
+// KeyID = SHA-256(ed25519_pub)[:16]，16 字节。
+message KeyID { bytes value = 1; }
+
+// NodeID = SHA-256(ed25519_pub)，32 字节。
+message NodeID { bytes value = 1; }
+
+message PubKey { bytes ed25519 = 1; }
+
+message Signature {
+  KeyID key_id = 1;
+  bytes signature = 2;              // Ed25519(SignInput)，64 字节
+  int64 signed_at_unix_nanos = 3;
+}
+
+// ---------- 身份 ----------
+
+enum AdminRole {
+  ADMIN_ROLE_UNSPECIFIED = 0;
+  ADMIN_ROLE_ROOT = 1;              // 可参与轮换与门限签名
+  ADMIN_ROLE_PUBLISHER = 2;         // 仅可发布指定主题
+}
+
+message AdminKey {
+  KeyID key_id = 1;
+  PubKey public_key = 2;
+  string label = 3;
+  AdminRole role = 4;
+}
+
+enum SigningScheme {
+  SIGNING_SCHEME_UNSPECIFIED = 0;
+  SIGNING_SCHEME_ED25519_MULTISIG = 1;   // 本方案：内联收集 N 个独立签名
+  SIGNING_SCHEME_FROST_ED25519 = 2;      // 预留：单签聚合
+}
+
+message SigningPolicy {
+  uint32 threshold = 1;                  // M
+  uint32 total = 2;                      // N
+  repeated KeyID root_key_ids = 3;
+  SigningScheme scheme = 4;
+  int64 clock_skew_tolerance_nanos = 5;  // 默认 300s
+}
+
+// ---------- 封存 / 中继 ----------
+
+message Inbox {
+  Hash rendezvous_id = 1;            // HKDF(admin_seed, "fc/v1/inbox" || epoch)
+  fixed64 epoch = 2;
+  uint32 replica = 3;                // 信箱副本数 k
+  uint32 mailbox_quota_bytes = 4;
+}
+
+message RelayPolicy {
+  bool mandatory = 1;                // 所有节点都必须履行中继义务
+  uint32 per_inbox_quota = 2;        // 每个信箱最多保留多少条
+  uint32 max_jitter_ms = 3;
+  uint32 min_jitter_ms = 4;
+}
+
+message ContentCipher {
+  bytes nonce = 1;                   // 12 字节
+  bytes ciphertext = 2;              // AES-256-GCM
+  KeyID topic_key_id = 3;
+}
+
+message TopicPolicy {
+  string topic = 1;
+  WritePolicy write_policy = 2;
+  ReadPolicy read_policy = 3;
+  int64 default_ttl_nanos = 4;
+  bool encrypted = 5;
+  repeated WrappedTopicKey wrapped_keys = 6;
+}
+
+enum WritePolicy {
+  WRITE_POLICY_UNSPECIFIED = 0;
+  WRITE_POLICY_ADMIN_ONLY = 1;
+  WRITE_POLICY_NODE_ALLOWED = 2;
+  WRITE_POLICY_KEYRING = 3;
+}
+
+enum ReadPolicy {
+  READ_POLICY_UNSPECIFIED = 0;
+  READ_POLICY_PUBLIC = 1;
+  READ_POLICY_TOPIC_KEY = 2;
+}
+
+message WrappedTopicKey {
+  KeyID recipient_key_id = 1;
+  bytes wrapped = 2;                 // X25519 + HKDF 封装的主题密钥
+}

@@ -1,0 +1,802 @@
+{
+  "meta": {
+    "format_version": "1",
+    "protocol": "futurecast/v1",
+    "proto_version": 1,
+    "generated_by": "futurecast/internal/conformance",
+    "determinism": "所有输入为常量；密钥种子 = SHA-256(label)；Ed25519 为 RFC8032 确定性签名；AEAD 使用固定 nonce",
+    "reproduce": "go run ./scripts/vectors",
+    "contract_revision_note": "域前缀从 housekitchen 导出常量读取；冻结守卫测试会锁定其字节值"
+  },
+  "domains": [
+    {
+      "name": "DomainSignedBody",
+      "ascii": "futurecast/v1/signedbody\u0000",
+      "hex": "667574757265636173742f76312f7369676e6564626f647900",
+      "purpose": "SignedBody 规范化前缀",
+      "implemented_in_housekitchen": true
+    },
+    {
+      "name": "DomainAdminSet",
+      "ascii": "futurecast/v1/adminset\u0000",
+      "hex": "667574757265636173742f76312f61646d696e73657400",
+      "purpose": "AdminSet 规范化前缀（已与 SignedBody 分离）",
+      "implemented_in_housekitchen": true
+    },
+    {
+      "name": "DomainSealedPayload",
+      "ascii": "futurecast/v1/sealedpayload\u0000",
+      "hex": "667574757265636173742f76312f7365616c65647061796c6f616400",
+      "purpose": "SealedPayload 规范化前缀",
+      "implemented_in_housekitchen": true
+    },
+    {
+      "name": "DomainMsgID",
+      "ascii": "futurecast/v1/msgid\u0000",
+      "hex": "667574757265636173742f76312f6d7367696400",
+      "purpose": "msg_id = SHA-256(该前缀 || SIGNED_BYTES)",
+      "implemented_in_housekitchen": true
+    },
+    {
+      "name": "DomainSignInput",
+      "ascii": "futurecast/v1/signinput\u0000",
+      "hex": "667574757265636173742f76312f7369676e696e70757400",
+      "purpose": "SIGN_INPUT 前缀（DESIGN.md §4.1 的公式仍漏写它，见 Finding F3）",
+      "implemented_in_housekitchen": true
+    },
+    {
+      "name": "DomainNodeAnnounce",
+      "ascii": "futurecast/v1/nodeannounce\u0000",
+      "hex": "667574757265636173742f76312f6e6f6465616e6e6f756e636500",
+      "purpose": "NodeAnnounce 规范化前缀；域只出现一次",
+      "implemented_in_housekitchen": true
+    },
+    {
+      "name": "DomainPeerExchange",
+      "ascii": "futurecast/v1/peerexchange\u0000",
+      "hex": "667574757265636173742f76312f7065657265786368616e676500",
+      "purpose": "PeerExchange 规范化前缀",
+      "implemented_in_housekitchen": true
+    },
+    {
+      "name": "DomainHello",
+      "ascii": "futurecast/v1/hello\u0000",
+      "hex": "667574757265636173742f76312f68656c6c6f00",
+      "purpose": "Hello 规范化前缀",
+      "implemented_in_housekitchen": true
+    },
+    {
+      "name": "DomainRelayTag",
+      "ascii": "futurecast/v1/relaytag\u0000",
+      "hex": "667574757265636173742f76312f72656c617974616700",
+      "purpose": "relay_tag HMAC 前缀",
+      "implemented_in_housekitchen": true
+    },
+    {
+      "name": "DomainInbox",
+      "ascii": "fc/v1/inbox",
+      "hex": "66632f76312f696e626f78",
+      "purpose": "rendezvous_id 的 HKDF info 前缀（无 NUL 结尾；实际 info = 前缀 + \"/\" + 十进制(epoch)）",
+      "implemented_in_housekitchen": true
+    },
+    {
+      "name": "DomainTopicKey",
+      "ascii": "fc/v1/topickey",
+      "hex": "66632f76312f746f7069636b6579",
+      "purpose": "主题密钥封装的 HKDF info（无 NUL 结尾）",
+      "implemented_in_housekitchen": true
+    },
+    {
+      "name": "SealedBodyInfo",
+      "ascii": "fc/v1/sealed",
+      "hex": "66632f76312f7365616c6564",
+      "purpose": "封存整条 SignedBody 的 HKDF info；在 sealed.go 中是未导出常量 sealedInfo（Finding F12）",
+      "implemented_in_housekitchen": false
+    },
+    {
+      "name": "SealedADPrefix",
+      "ascii": "futurecast/v1/sealed\u0000",
+      "hex": "667574757265636173742f76312f7365616c656400",
+      "purpose": "封存 AEAD 关联数据前缀；在 sealed.go 中是未导出常量 adPrefix（Finding F12）",
+      "implemented_in_housekitchen": false
+    },
+    {
+      "name": "DomainDirectedBody",
+      "ascii": "futurecast/v1/directedbody\u0000",
+      "hex": "667574757265636173742f76312f6469726563746564626f647900",
+      "purpose": "定向广播外层 DirectedBody 的规范化前缀（附录 E.2）",
+      "implemented_in_housekitchen": true
+    },
+    {
+      "name": "DomainDirectedKernel",
+      "ascii": "futurecast/v1/directedkernel\u0000",
+      "hex": "667574757265636173742f76312f64697265637465646b65726e656c00",
+      "purpose": "定向广播内层 DirectedKernel 的规范化前缀，同时是内层 AEAD 的 AD 前缀",
+      "implemented_in_housekitchen": true
+    },
+    {
+      "name": "DomainDirectedWrap",
+      "ascii": "fc/v1/directedwrap",
+      "hex": "66632f76312f646972656374656477726170",
+      "purpose": "wrapped_key 的 HKDF info（无 NUL 结尾，附录 E.2）",
+      "implemented_in_housekitchen": true
+    },
+    {
+      "name": "DomainDirectedBlind",
+      "ascii": "fc/v1/directedblind",
+      "hex": "66632f76312f6469726563746564626c696e64",
+      "purpose": "blind_key 的 HKDF info（无 NUL 结尾，附录 E.2）",
+      "implemented_in_housekitchen": true
+    },
+    {
+      "name": "DomainDirectedTag",
+      "ascii": "futurecast/v1/dirtag\u0000",
+      "hex": "667574757265636173742f76312f64697274616700",
+      "purpose": "recipient_tag 的 HMAC 域前缀（附录 E.2）",
+      "implemented_in_housekitchen": true
+    },
+    {
+      "name": "DirectedWrapADPrefix",
+      "ascii": "futurecast/v1/dirwrap\u0000",
+      "hex": "667574757265636173742f76312f6469727772617000",
+      "purpose": "wrapped_key 的 AEAD AD 前缀；在 directed.go 的 wrapAAD 中是未导出字面量，跨语言实现只能以本向量为准",
+      "implemented_in_housekitchen": false
+    }
+  ],
+  "derivations": [
+    {
+      "name": "SIGNED_BYTES",
+      "formula": "proto3_deterministic_marshal(SignedBody{msg_id=nil, signers=nil}) 前置 ASCII \"futurecast/v1/signedbody\\x00\""
+    },
+    {
+      "name": "MSG_ID",
+      "formula": "SHA-256(\"futurecast/v1/msgid\\x00\" || SIGNED_BYTES)"
+    },
+    {
+      "name": "SIGN_INPUT",
+      "formula": "SHA-256(\"futurecast/v1/signinput\\x00\" || SIGNED_BYTES || key_id(16) || uint64_be(signed_at_unix_nanos))"
+    },
+    {
+      "name": "KEY_ID",
+      "formula": "SHA-256(ed25519_pub)[0:16]"
+    },
+    {
+      "name": "NODE_ID",
+      "formula": "SHA-256(ed25519_pub)[0:32]"
+    },
+    {
+      "name": "ADMIN_SET_HASH",
+      "formula": "SHA-256(\"futurecast/v1/adminset\\x00\" || proto3_deterministic_marshal(AdminSet{signers=nil}))"
+    },
+    {
+      "name": "RELAY_TAG",
+      "formula": "HMAC-SHA256(dailyKey, \"futurecast/v1/relaytag\\x00\" || msg_id || uint64_be(prev))[0:8] 按大端读作 uint64"
+    },
+    {
+      "name": "TOPIC_KEY_SEAL",
+      "formula": "sealed = nonce(12) || AES-256-GCM(HKDF-SHA256(X25519(ephPriv, recipientPub), salt=zeros(32), info=\"fc/v1/topickey\"), nonce, topicKey, ad)"
+    },
+    {
+      "name": "SEALED_BODY",
+      "formula": "sealed = nonce(12) || AES-256-GCM(HKDF-SHA256(X25519(ephPriv, recipientPub), salt=zeros(32), info=\"fc/v1/sealed\"), nonce, deterministic_proto(SignedBody 完整含 msg_id+signers), ad)；ad = \"futurecast/v1/sealed\\x00\" || rendezvous(32) || u64be(epoch)"
+    },
+    {
+      "name": "INNER_BODY_COMMITMENT",
+      "formula": "inbox_rendezvous_id = SHA-256(inner_body)；inner_body = deterministic_proto(内层 SignedBody)"
+    },
+    {
+      "name": "NODE_SELF_SIGN",
+      "formula": "Ed25519_sign(nodePriv, CanonicalNodeAnnounce(msg))，域前缀只出现一次"
+    },
+    {
+      "name": "HELLO_SELF_SIGN",
+      "formula": "Ed25519_sign(nodePriv, CanonicalHello(msg))，域前缀只出现一次"
+    },
+    {
+      "name": "DIRECTED_BYTES",
+      "formula": "proto3_deterministic_marshal(DirectedBody{msg_id=nil, signers=nil}) 前置 ASCII \"futurecast/v1/directedbody\\x00\""
+    },
+    {
+      "name": "DIRECTED_MSG_ID",
+      "formula": "SHA-256(\"futurecast/v1/msgid\\x00\" || DIRECTED_BYTES)（与 SignedBody 共用 DomainMsgID；域分隔靠 DIRECTED_BYTES 自带的前缀）"
+    },
+    {
+      "name": "KERNEL_BYTES",
+      "formula": "\"futurecast/v1/directedkernel\\x00\" || proto3_deterministic_marshal(DirectedKernel)"
+    },
+    {
+      "name": "DIRECTED_BLIND_KEY",
+      "formula": "HKDF-SHA256(secret=content_key, salt=blind_salt, info=\"fc/v1/directedblind\", len=32)"
+    },
+    {
+      "name": "DIRECTED_RECIPIENT_TAG",
+      "formula": "HMAC-SHA256(blind_key, \"futurecast/v1/dirtag\\x00\" || node_id)[:16]（**不是** SHA-256，见 Finding F14）"
+    },
+    {
+      "name": "DIRECTED_WRAP_KEY",
+      "formula": "HKDF-SHA256(secret=X25519(eph_priv_i, recipient_x25519), salt=zeros(32), info=\"fc/v1/directedwrap\", len=32)"
+    },
+    {
+      "name": "DIRECTED_WRAPPED_KEY",
+      "formula": "sealed = nonce(12) || AES-256-GCM(wrap_key_i, nonce, content_key, ad)；ad = \"futurecast/v1/dirwrap\\x00\" || blind_salt || u64be(i)"
+    },
+    {
+      "name": "DIRECTED_CIPHERTEXT",
+      "formula": "ciphertext = AES-256-GCM(content_key, content_nonce, KERNEL_BYTES, ad) 去掉 12 字节 nonce 后的部分；ad = \"futurecast/v1/directedkernel\\x00\" || blind_salt"
+    },
+    {
+      "name": "DIRECTED_RECIPIENT_X25519",
+      "formula": "recipient_x25519 = birational_map(ed25519_pub)（crypto.Ed25519ToX25519）；必须等于 X25519(clamp(SHA-512(seed)[:32]), basepoint)"
+    }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "severity": "resolved",
+      "summary": "CONTRACTS §2 曾列出但代码中不存在的 housekitchen.DomainSealedPayload，现已补齐，CanonicalSealedPayload 改为引用该常量。",
+      "contract_reference": "docs/CONTRACTS.md §2 vs internal/housekitchen/ids.go:37-38, canonical.go:171-187",
+      "evidence": "ids.go 现有 DomainSealedPayload = \"futurecast/v1/sealedpayload\\x00\"，canonical.go 使用它。",
+      "status": "fixed-during-run（我在首次读取时该常量尚不存在，Lead 于本轮补齐）"
+    },
+    {
+      "id": "F2",
+      "severity": "resolved",
+      "summary": "节点自证曾是双域前缀：CanonicalXxx 已含域前缀，SignWithDomain 又 HashOf(domain, canonical) 再加一次。现已改为单前缀：SignWithDomain 直接对 canonical 签名。",
+      "contract_reference": "internal/crypto/crypto.go:213-240 vs internal/identity/node.go:74-151",
+      "evidence": "SignWithDomain 现在执行 _ = domain; return Sign(priv, canonical)。",
+      "status": "fixed-during-run（向量已按单前缀重算）"
+    },
+    {
+      "id": "F3",
+      "severity": "high",
+      "summary": "DESIGN.md 内部自相矛盾：§3（line 91）的 SIGN_INPUT 公式含 DomainSignInput 前缀且与实现一致，但 §4.1（line 121）仍是旧公式 SHA-256(SIGNED_BYTES||key_id||u64(at))，缺少域前缀。按 §4.1 实现的外部签名者会与 Go 完全不兼容。",
+      "contract_reference": "docs/DESIGN.md:91（正确） vs docs/DESIGN.md:121（错误） vs internal/housekitchen/canonical.go:107-109",
+      "evidence": "TestKnownIssue_F3 用 §4.1 公式算出的签名被 crypto.VerifySignature 拒绝。",
+      "status": "open — 建议删除/修正 DESIGN.md:121 的公式，指向 §3 的唯一定义。"
+    },
+    {
+      "id": "F4",
+      "severity": "high",
+      "summary": "门限阈值取自 SignedBody.policy（签名者自填）而非本地 AdminSet.policy。单把被控管理员密钥可自行声明 threshold=1 并成功广播，绕过 2-of-3 门限。",
+      "contract_reference": "docs/CONTRACTS.md §5.1 第 6 步 vs internal/registry/registry.go:330-339",
+      "evidence": "registry.go:330-332 先取 body.GetPolicy()，非 nil 即用作门限；TestKnownIssue_F4 复现：1 把密钥 + 自声明 threshold=1 的广播被接受。",
+      "status": "open — 建议验证侧以本地 set.GetPolicy().Threshold 为准，或要求 body.policy 与本地完全一致。"
+    },
+    {
+      "id": "F5",
+      "severity": "resolved",
+      "summary": "CanonicalAdminSet 曾复用 DomainSignedBody，AdminSet 与 SignedBody 之间没有域分隔。现已引入独立 DomainAdminSet。",
+      "contract_reference": "internal/housekitchen/canonical.go:44-63",
+      "evidence": "admin_set.domain_used_ascii == \"futurecast/v1/adminset\\x00\"。",
+      "status": "fixed-during-run"
+    },
+    {
+      "id": "F6",
+      "severity": "medium",
+      "summary": "VerifyMessage 完全不校验 proto_version。声明 proto_version=999 的消息会被正常接受，§5.1 管线中也没有版本步骤。",
+      "contract_reference": "docs/CONTRACTS.md §5.1（7 步无版本检查）vs housekitchen.ProtoVersion/MinProtoVersion",
+      "evidence": "TestKnownIssue_F6 显示 proto_version=999 仍通过校验。",
+      "status": "open — 建议在管线第 0 步加版本检查并返回 ErrProtocolVersion。"
+    },
+    {
+      "id": "F7",
+      "severity": "low",
+      "summary": "\"管理员消息不得携带 author\" 的拒绝路径没有包装任何错误哨兵，调用方无法用 errors.Is 分类。",
+      "contract_reference": "docs/CONTRACTS.md §2 错误哨兵列表 vs internal/registry/registry.go:349-351",
+      "evidence": "TestKnownIssue_F7 显示该错误不匹配任何哨兵。",
+      "status": "open — 建议改为包装 housekitchen.ErrNotAuthorized。"
+    },
+    {
+      "id": "F8",
+      "severity": "medium",
+      "summary": "Registry.Install 对同一代数的不同集合静默返回 nil（幂等语义过宽），无法检测同代 equivocation（两个互相冲突的第 N 代 AdminSet）。",
+      "contract_reference": "docs/CONTRACTS.md §5 Install（幂等）vs internal/registry/registry.go:189-192",
+      "evidence": "TestKnownIssue_F8 显示两个不同的第 2 代集合都被 Install 接受（第二个被当作 no-op）。",
+      "status": "open — 建议 Install 发现同代但摘要不同时返回明确错误。"
+    },
+    {
+      "id": "F9",
+      "severity": "info",
+      "summary": "注册表层对重放完全无状态：同一信封可无限次通过 VerifyMessage。去重由 store.Seen 承担（现已在 internal/store 实现）。集成层必须先 Seen 再 VerifyMessage。",
+      "contract_reference": "docs/CONTRACTS.md §6.1 Store.Seen vs §5.1 管线",
+      "evidence": "TestNegative_N10_Replay 显示：无 store 时两次均通过；接入 store.Seen 后第二次被去重。",
+      "status": "accepted-by-design — 需在 node 集成层固化调用顺序并把该顺序写进 PROTOCOL.md。"
+    },
+    {
+      "id": "F10",
+      "severity": "medium",
+      "summary": "expires_at_unix_nanos == 0 被当作\"永不过期\"（registry.go:299 的条件 exp != 0），且 created_at 没有下界。跨语言实现若把 0 解释为 Unix 纪元（早已过期）就会与 Go 分歧；恶意节点也可发布永不过期的消息。",
+      "contract_reference": "docs/CONTRACTS.md §5.1 第 3 步 vs internal/registry/registry.go:299-304",
+      "evidence": "TestKnownIssue_F10：expires_at=0 的消息在 now+10 年仍然被接受。",
+      "status": "open — 建议明确\"0 = 永不过期\"写入 PROTOCOL.md，或在验证侧要求 expires_at \u003e created_at \u003e 0。"
+    },
+    {
+      "id": "F11",
+      "severity": "low",
+      "summary": "crypto.SignWithDomain/VerifyWithDomain 完全忽略 domain 参数（_ = domain），而注释声称\"domain 参数保留仅用于断言调用方传对了域（见 domainMatches）\"——domainMatches 函数并不存在。传错域不会有任何反馈。",
+      "contract_reference": "internal/crypto/crypto.go:213-240",
+      "evidence": "grep -rn domainMatches internal/ 只命中该注释本身。",
+      "status": "open — 建议删除该注释中的 domainMatches 引用，或真正实现断言（域已由 CanonicalXxx 保证，可考虑直接去掉 domain 参数）。"
+    },
+    {
+      "id": "F12",
+      "severity": "high",
+      "summary": "封存载荷存在两种互不兼容的形状：internal/sealed.Seal 产出 ciphertext、inner_body 为空；internal/node.publishAsRelay 产出 inner_body、无 ciphertext，并把 inbox_rendezvous_id 复用为 SHA-256(inner_body) 承诺值；node.Unseal 要求 inner_body 非空并完全忽略 ciphertext。因此 sealed.Seal 的产物无法被 node.Unseal 接受。此外两条路径的 HKDF info 与 AD 前缀都是未导出私有常量，跨语言实现没有公开真源。",
+      "contract_reference": "docs/CONTRACTS.md §6.2 SealedPayload 字段语义 vs internal/sealed/sealed.go:31-32,77-114 vs internal/node/sealed_relay.go:137-160,377-392",
+      "evidence": "TestKnownIssue_F12 显示 sealed.Seal 返回的 SealedPayload.GetInnerBody() 为空，而 node.Unseal 在 sealed_relay.go:380 直接以\"封存载荷为空\"拒绝。",
+      "status": "open — 建议统一为一条封存路径（要么 inner_body 承诺 + 内层完整正文，要么 X25519 密文），并导出 sealed 的 info/AD 常量、写入 PROTOCOL.md。"
+    },
+    {
+      "id": "F13",
+      "severity": "medium",
+      "summary": "契约与实现的节点消息语义已漂移：CONTRACTS §5.1 第 7 步仍写“必须由 author 本人自签（会话公钥必须匹配 author）”，但 SignedBody 新增了 author_pub(field 15) 并绑定在签名范围内；验证时 author_pub 优先，会话对端只有在“自称就是 author”时才被交叉校验。于是中继可以把作者的消息转发给任意对端而仍被接受。",
+      "contract_reference": "docs/CONTRACTS.md §5.1 第 7 步 vs internal/registry/registry.go:373-441 + proto/futurecast/v1/message.proto:150",
+      "evidence": "TestNegative_N8 用例 (b)/(h)：会话对端为冒充者时，带正确 author_pub 与作者自签的中继转发消息被接受；不带 author_pub 的旧式消息才走“会话公钥必须等于 author”的兼容路径。",
+      "status": "open — 属功能性演进，建议同步修订 CONTRACTS §5.1 与 PROTOCOL.md，明确 author_pub 的信任模型（它把“连接对端身份”与“消息作者身份”解耦）。"
+    },
+    {
+      "id": "F14",
+      "severity": "high",
+      "summary": "proto 里 DirectRecipient.recipient_tag 的注释公式是错的：写成 SHA-256(\"futurecast/v1/dirtag\\0\" || content_key || sealed_key || content_key_again)，而实现与 PROTOCOL 附录 E.2 都是 HMAC-SHA256(blind_key, \"futurecast/v1/dirtag\\0\" || node_id)[:16]。按注释实现的外部方既算不对 tag，还会误以为 recipient_tag 泄露 content_key 的哈希。另外注释里的 sealed_key 在定向广播里根本不存在（那是 sealed 模式的概念）。",
+      "contract_reference": "proto/futurecast/v1/message.proto:149（错误） vs docs/PROTOCOL.md 附录 E.2（正确） vs internal/directed/directed.go:74-79",
+      "evidence": "TestDirectedInterop_* 按 E.2 公式独立复算的 16 字节 tag 与 directed.Open 内部判定一致；按注释公式计算则与向量不符。",
+      "status": "resolved — Lead 已修正 proto 注释，与附录 E.2 的 HMAC 公式一致"
+    },
+    {
+      "id": "F15",
+      "severity": "medium",
+      "summary": "PROTOCOL 附录 E.3 外层第 7 步要求校验 blind_salt 长度 16，但 directed.VerifyBody 只检查 recipients 非空、recipient_count、content_nonce 长度与 ciphertext 非空，**没有 blind_salt 长度检查**；该检查只存在于 directed.Open（且排在 recipient_count 之后）。后果：一条 blind_salt 长度为 0/8 的消息，只要门限签名自洽就能通过所有中继的外层校验并被全网转发，直到收件人尝试解密才失败。",
+      "contract_reference": "docs/PROTOCOL.md 附录 E.3 第 7 步 vs internal/directed/directed.go:130-142（VerifyBody）与 :243-245（Open）",
+      "evidence": "TestDirectedNegative_D4_BlindSaltLength：重新签名后的 8 字节 blind_salt 消息被 directed.VerifyBody 接受（err=nil），只有 directed.Open 报 ErrDirectedInvalid。",
+      "status": "open — 建议在 VerifyBody 第 4 步补 len(blind_salt)==16 -\u003e ErrDirectedInvalid。"
+    },
+    {
+      "id": "F16",
+      "severity": "medium",
+      "summary": "DirectedKernel.outer_msg_id(field 7) 从未被填充：directed.Seal 构造 kernel 时只写 topic/media_type/body/created_at/expires_at/nonce；housekitchen.DirectedBodyHash 的注释声称该摘要“被写进内层 outer_msg_id 用于把密文绑死到外层消息”，但 DirectedBodyHash 在整个仓库里没有任何调用方。附录 E 的 E.1 字段表也漏列了该字段。实际能防密文搬运的是内层 AD 里的 blind_salt（已被签名覆盖），所以安全结论不变，但文档描述与实现不符、且该字段是永不出现的死字段。",
+      "contract_reference": "proto/futurecast/v1/message.proto:184 + internal/housekitchen/canonical.go:186-199 vs internal/directed/directed.go:168-175（kernel 构造）与 docs/PROTOCOL.md 附录 E.1/E.2",
+      "evidence": "grep -rn 'OuterMsgId|outer_msg_id' 只命中 proto/生成物与 canonical.go 的注释；向量 directed.kernel.outer_msg_id_hex 为空串。",
+      "status": "resolved — Lead 已删除该废弃字段（field 7 保留号）与 DirectedBodyHash"
+    },
+    {
+      "id": "F17",
+      "severity": "low",
+      "summary": "housekitchen.DomainDirectedKey（\"fc/v1/directedkey\"）已声明但全仓库无任何调用方：附录 E.2 里 content_key 是纯随机值，不需要 HKDF 派生。它容易让外部实现者以为存在第三条派生公式。",
+      "contract_reference": "internal/housekitchen/ids.go:47-48 vs docs/PROTOCOL.md 附录 E.2",
+      "evidence": "grep -rn 'DomainDirectedKey' 只命中 ids.go 的定义与 conformance 的域向量表。",
+      "status": "resolved — Lead 已删除该无调用方常量"
+    }
+  ],
+  "admin_set": {
+    "generation": 1,
+    "created_at_unix_nanos": 1700000000000000000,
+    "policy": {
+      "threshold": 2,
+      "total": 3,
+      "root_key_ids_hex": [
+        "4e541ef671672fc6e36569aea25c6bd7",
+        "5ab49356330dfbbf28e089d56fa616d6",
+        "e42c53edbbc9bd8b0d43f702ce6a1628"
+      ],
+      "scheme": 1,
+      "scheme_name": "SIGNING_SCHEME_ED25519_MULTISIG",
+      "clock_skew_tolerance_nanos": 300000000000
+    },
+    "keys": [
+      {
+        "label": "bob",
+        "role": 1,
+        "role_name": "ADMIN_ROLE_ROOT",
+        "seed_hex": "dc2961652e75b8f527709b783a5077a7fec9f573d2a8a4c1f82914614dffc5e4",
+        "pub_hex": "9efe291e6d5d11c7c7e76a0c48d34f554f36d6a921a7c080898e0a29049cc6a3",
+        "key_id_hex": "4e541ef671672fc6e36569aea25c6bd7"
+      },
+      {
+        "label": "alice",
+        "role": 1,
+        "role_name": "ADMIN_ROLE_ROOT",
+        "seed_hex": "e467891327852ab418e13c0c864ae23b1179f7b25c1b46ccfa5350d5e0f1cda8",
+        "pub_hex": "33d7276e46792884dded2f7428b5c2c563cab4d91d0758781879fff4858d948d",
+        "key_id_hex": "5ab49356330dfbbf28e089d56fa616d6"
+      },
+      {
+        "label": "carol",
+        "role": 1,
+        "role_name": "ADMIN_ROLE_ROOT",
+        "seed_hex": "0c6018f83d3eedb692333bd8f746962e763913fa2d3f45a36053fa6b5895da66",
+        "pub_hex": "c0a9009374ba90289e29c9679a95d7102afe3a8e744079f14c266f96fc39d37a",
+        "key_id_hex": "e42c53edbbc9bd8b0d43f702ce6a1628"
+      }
+    ],
+    "domain_used_ascii": "futurecast/v1/adminset\u0000",
+    "domain_used_hex": "667574757265636173742f76312f61646d696e73657400",
+    "proto_hex": "0801123f0a120a104e541ef671672fc6e36569aea25c6bd712220a209efe291e6d5d11c7c7e76a0c48d34f554f36d6a921a7c080898e0a29049cc6a31a03626f62200112410a120a105ab49356330dfbbf28e089d56fa616d612220a2033d7276e46792884dded2f7428b5c2c563cab4d91d0758781879fff4858d948d1a05616c696365200112410a120a10e42c53edbbc9bd8b0d43f702ce6a162812220a20c0a9009374ba90289e29c9679a95d7102afe3a8e744079f14c266f96fc39d37a1a056361726f6c20011a49080210031a120a104e541ef671672fc6e36569aea25c6bd71a120a105ab49356330dfbbf28e089d56fa616d61a120a10e42c53edbbc9bd8b0d43f702ce6a162820012880f092cbdd08288080a8b1e39fe7cb17",
+    "signed_bytes_hex": "667574757265636173742f76312f61646d696e736574000801123f0a120a104e541ef671672fc6e36569aea25c6bd712220a209efe291e6d5d11c7c7e76a0c48d34f554f36d6a921a7c080898e0a29049cc6a31a03626f62200112410a120a105ab49356330dfbbf28e089d56fa616d612220a2033d7276e46792884dded2f7428b5c2c563cab4d91d0758781879fff4858d948d1a05616c696365200112410a120a10e42c53edbbc9bd8b0d43f702ce6a162812220a20c0a9009374ba90289e29c9679a95d7102afe3a8e744079f14c266f96fc39d37a1a056361726f6c20011a49080210031a120a104e541ef671672fc6e36569aea25c6bd71a120a105ab49356330dfbbf28e089d56fa616d61a120a10e42c53edbbc9bd8b0d43f702ce6a162820012880f092cbdd08288080a8b1e39fe7cb17",
+    "admin_set_hash_hex": "dc96dbe3e13e8a1f947bc8e272c7f072863b0213d8412aadfc6dda6dfc55d445",
+    "note": "AdminSet 使用独立域前缀 DomainAdminSet（曾与 SignedBody 共用前缀，已修正）。keys/root_key_ids 必须是按 key_id 字典序排序后的顺序。"
+  },
+  "signed_body": {
+    "proto_version": 1,
+    "kind": 1,
+    "kind_name": "MESSAGE_KIND_ADMIN_BROADCAST",
+    "topic": "alerts",
+    "created_at_unix_nanos": 1700000000000000000,
+    "expires_at_unix_nanos": 1700003600000000000,
+    "nonce_hex": "07ec06c5852649016c62880a29954382",
+    "admin_set_generation": 1,
+    "signer_set_hash_hex": "dc96dbe3e13e8a1f947bc8e272c7f072863b0213d8412aadfc6dda6dfc55d445",
+    "policy": {
+      "threshold": 2,
+      "total": 3,
+      "root_key_ids_hex": [
+        "4e541ef671672fc6e36569aea25c6bd7",
+        "5ab49356330dfbbf28e089d56fa616d6",
+        "e42c53edbbc9bd8b0d43f702ce6a1628"
+      ],
+      "scheme": 1,
+      "scheme_name": "SIGNING_SCHEME_ED25519_MULTISIG",
+      "clock_skew_tolerance_nanos": 300000000000
+    },
+    "max_hops": 32,
+    "payload_oneof": "text",
+    "payload_text": {
+      "media_type": "text/plain",
+      "body": "futurecast interop vector #1"
+    },
+    "proto_hex": "080110011a06616c65727473288080a8b1e39fe7cb173080c08ab7c688e8cb173a1007ec06c5852649016c62880a2995438240014a220a20dc96dbe3e13e8a1f947bc8e272c7f072863b0213d8412aadfc6dda6dfc55d4455249080210031a120a104e541ef671672fc6e36569aea25c6bd71a120a105ab49356330dfbbf28e089d56fa616d61a120a10e42c53edbbc9bd8b0d43f702ce6a162820012880f092cbdd086a2c0a2a0a0a746578742f706c61696e121c6675747572656361737420696e7465726f7020766563746f722023317020",
+    "signed_bytes_hex": "667574757265636173742f76312f7369676e6564626f647900080110011a06616c65727473288080a8b1e39fe7cb173080c08ab7c688e8cb173a1007ec06c5852649016c62880a2995438240014a220a20dc96dbe3e13e8a1f947bc8e272c7f072863b0213d8412aadfc6dda6dfc55d4455249080210031a120a104e541ef671672fc6e36569aea25c6bd71a120a105ab49356330dfbbf28e089d56fa616d61a120a10e42c53edbbc9bd8b0d43f702ce6a162820012880f092cbdd086a2c0a2a0a0a746578742f706c61696e121c6675747572656361737420696e7465726f7020766563746f722023317020",
+    "msg_id_hex": "3519444779a265e32e04034020fca5687b6e0cede9d6ff1c4c0b3ccaddd4f1e8",
+    "signers": [
+      {
+        "key_id_hex": "4e541ef671672fc6e36569aea25c6bd7",
+        "signed_at_unix_nanos": 1700000000000000000,
+        "sign_input_hex": "94ef22c3d40f8b23bb724fcbea0e1bc6390fc5e2d9612b70a69bf93b84f76b32",
+        "signature_hex": "b610e6788bec09a47d7a3364b919f01138613233b7e9ac3d68a70dfd9a78a5a118c1d07f6d688c63223f80a46a0dca3273b2bd8e3fbb34587ffb38f449c9b902"
+      },
+      {
+        "key_id_hex": "5ab49356330dfbbf28e089d56fa616d6",
+        "signed_at_unix_nanos": 1700000000000000000,
+        "sign_input_hex": "17b53f2d47bfe231755833ba3ec4c31cf86c04e192da2b4688af31e73f601641",
+        "signature_hex": "62eb262db42b17fdb834ea9d86a7fc07919db9db41a0f23f4663170cafbb20572465e110dd42ac32cd6369a43dca9a698446e2755ed01d28fa950a51da8c7a01"
+      }
+    ],
+    "envelope_msg_id_hex": "3519444779a265e32e04034020fca5687b6e0cede9d6ff1c4c0b3ccaddd4f1e8",
+    "envelope_first_seen_unix_nanos": 1700000000000000000,
+    "envelope_hops": 0,
+    "note": "canonical 编码前清空 msg_id(field 4) 与 signers(field 12)；proto3 默认值省略；字段按字段号升序。"
+  },
+  "node_announce": {
+    "node_seed_hex": "d399bf7e0a8d576429cd104e48db318e3bf9e26f240bcaa1db30ec1877a893a2",
+    "node_pub_hex": "a6e08bf1bdd7969010d0f67b5d005444b0d345c3de96c90cb7966c56750c954a",
+    "node_id_hex": "8a7eda11823eaf3da07f7728dab627802812b0100f1d92ac23cde88ab09d62fc",
+    "addrs": [
+      "127.0.0.1:7777"
+    ],
+    "address_public": true,
+    "rendezvous_hint_hex": "7062a42e8f640448549ed950e3af578d3772a4857b50ac377250851f23d5be32",
+    "seq": 42,
+    "issued_at_unix_nanos": 1700000000000000000,
+    "proto_hex": "0a220a208a7eda11823eaf3da07f7728dab627802812b0100f1d92ac23cde88ab09d62fc120e3132372e302e302e313a37373737180122220a207062a42e8f640448549ed950e3af578d3772a4857b50ac377250851f23d5be32282a308080a8b1e39fe7cb17",
+    "signed_bytes_hex": "667574757265636173742f76312f6e6f6465616e6e6f756e6365000a220a208a7eda11823eaf3da07f7728dab627802812b0100f1d92ac23cde88ab09d62fc120e3132372e302e302e313a37373737180122220a207062a42e8f640448549ed950e3af578d3772a4857b50ac377250851f23d5be32282a308080a8b1e39fe7cb17",
+    "sign_digest_input_hex": "667574757265636173742f76312f6e6f6465616e6e6f756e6365000a220a208a7eda11823eaf3da07f7728dab627802812b0100f1d92ac23cde88ab09d62fc120e3132372e302e302e313a37373737180122220a207062a42e8f640448549ed950e3af578d3772a4857b50ac377250851f23d5be32282a308080a8b1e39fe7cb17",
+    "sign_digest_hex": "1d11194776e98a42a2556bcbcb9a4b4b03aaac789a0715f6b2cd6eb9c756904d",
+    "self_signature_hex": "9e329740f9ecf5f81efceef1fcef7b567105e77649c27e5c2547676314f95688f3c59ee9c105066def09c5df19d96bc19e5bee99948a3bb16ac4f795e6d56c00",
+    "domain_prefix_count_in_digest": 1
+  },
+  "sealed": {
+    "recipient_x25519_priv_hex": "6c8c2d3a1fa46347caa95d563d01dc95eb7e2c74c913f6fa21992080cff3972c",
+    "recipient_x25519_pub_hex": "c93c14acce7aac6e084d25ca008c28d90ad22f8d30989fe3ad2958710d029969",
+    "inbox_rendezvous_id_hex": "7062a42e8f640448549ed950e3af578d3772a4857b50ac377250851f23d5be32",
+    "epoch": 7,
+    "jitter_hint_ms": 250,
+    "topic_key_wrap": {
+      "ephemeral_x25519_priv_hex": "fd9b6be7bc9924ec4e266afc146f91947432fdb879f90ba45380a2596ea76881",
+      "ephemeral_x25519_pub_hex": "54b36c729c6234c8fed8773e4fa3b43db3bdca20dc751217a0c866ee6fcd483c",
+      "shared_secret_hex": "3c0d6e13bd22a85ccab0cb8f864e93b41775e4ce1408066548271cec9a3fe831",
+      "hkdf_hash": "SHA-256",
+      "hkdf_salt_hex": "",
+      "hkdf_salt_note": "salt 为空 = RFC5869 默认的 HashLen 个 0 字节（SHA-256 时为 32 个 0x00）",
+      "hkdf_info_ascii": "fc/v1/topickey",
+      "derived_key_hex": "35a0299ad9bd65ca5decb5af964c2d2ee53ba21342dc3d22127e977ab845d91a",
+      "plaintext_topic_key_hex": "79a5b107861b6acd90eac2de82f6bb6f8e427542fa5762c471ab3758c2e58c32",
+      "associated_data_hex": "667574757265636173742f766563746f722f6173736f6369617465642d64617461",
+      "nonce_hex": "e4daed5e88d0084da4980146",
+      "ciphertext_hex": "8a41d9afc501b2a0757e0e5accfcb30ece4aa01fcb6a20d4a89f61a8b05045d725a50f470b48d04755b403e9feb0d145",
+      "sealed_hex": "e4daed5e88d0084da49801468a41d9afc501b2a0757e0e5accfcb30ece4aa01fcb6a20d4a89f61a8b05045d725a50f470b48d04755b403e9feb0d145"
+    },
+    "sealed_body": {
+      "hkdf_info_ascii": "fc/v1/sealed",
+      "associated_data_hex": "667574757265636173742f76312f7365616c6564007062a42e8f640448549ed950e3af578d3772a4857b50ac377250851f23d5be320000000000000007",
+      "associated_data_prefix_ascii": "futurecast/v1/sealed\u0000",
+      "ephemeral_x25519_priv_hex": "60fd893f4f6350cbb2c0e8a70cf1c23e737e6743a2128d6327abd621e687f5e2",
+      "ephemeral_x25519_pub_hex": "b60cb8dcc7337d1a3e53ffc1d87c0c4d6d3a9ec82def1aeb0505b07091008251",
+      "shared_secret_hex": "e6a323d436cc01abd4fd0f2daaf1432c464a82e016fc8e8bf3c3bce31a56d503",
+      "derived_key_hex": "b96c55c922b6cc034e2e9bcca12d17d40b820d5b02132d5adfa1d439d6822d57",
+      "nonce_hex": "ae9d486db2aa70ae7db856e4",
+      "ciphertext_hex": "a52357485266fb6014536906a79c0778db52e0927b228eb2c0be28d7e52e08848e58c1429dbcbbc340521ad6e01f6d91c20975c42a811d1fdea930c04fa4650d88521d6f7cdc65629a0e0ee3ce3e787953001d9906d8565910263b6fb362c7d6a81b1c0c2a09ef0f580d108da2c023edeec39275bd6676894e91202d3ce941f79c3e4e6ac1bfdfb217bc2667284e7b5d571ac2dbf1fb9a9abc157e1c0918e4a27f799d90f9d5907588bf3bb5c3288c09c03a1d375495ccc4f502cde99a9b5c7d8d182b016de6c232f0108890a2e809b8034276cc286b91f2b06f32ee49584634cf67c63640e4bf9098c66a241e02e5ea0340d9f8a209649f4bec11ee20ee089d87d2ce0fbf1ca3a0a68c524bac71fc82d8295ef4dabbdffc697bc84890152a466f7d892f7b44fde73213908ed97519ef8fd23c44cbec96e35c198403fb4aa6b6c167998a7bf9dc6ebbdfce2e73d7560c4853fca63c9393651f0e88c582c181ab37d7677fcdae79695f8a48ad32b22045d51a96927713f9b802df290a0f1d864e1005283bb320402ac76b17d6836d6b049b443423ab256387676d7eab402f54a1881a4bf76452017b53d6479513bda8e4e96d0613de40fe502197ec2449962ae02e4795d2a849724ae3a841",
+      "sealed_hex": "ae9d486db2aa70ae7db856e4a52357485266fb6014536906a79c0778db52e0927b228eb2c0be28d7e52e08848e58c1429dbcbbc340521ad6e01f6d91c20975c42a811d1fdea930c04fa4650d88521d6f7cdc65629a0e0ee3ce3e787953001d9906d8565910263b6fb362c7d6a81b1c0c2a09ef0f580d108da2c023edeec39275bd6676894e91202d3ce941f79c3e4e6ac1bfdfb217bc2667284e7b5d571ac2dbf1fb9a9abc157e1c0918e4a27f799d90f9d5907588bf3bb5c3288c09c03a1d375495ccc4f502cde99a9b5c7d8d182b016de6c232f0108890a2e809b8034276cc286b91f2b06f32ee49584634cf67c63640e4bf9098c66a241e02e5ea0340d9f8a209649f4bec11ee20ee089d87d2ce0fbf1ca3a0a68c524bac71fc82d8295ef4dabbdffc697bc84890152a466f7d892f7b44fde73213908ed97519ef8fd23c44cbec96e35c198403fb4aa6b6c167998a7bf9dc6ebbdfce2e73d7560c4853fca63c9393651f0e88c582c181ab37d7677fcdae79695f8a48ad32b22045d51a96927713f9b802df290a0f1d864e1005283bb320402ac76b17d6836d6b049b443423ab256387676d7eab402f54a1881a4bf76452017b53d6479513bda8e4e96d0613de40fe502197ec2449962ae02e4795d2a849724ae3a841",
+      "plaintext_full_body_proto_hex": "080110011a06616c6572747322220a203519444779a265e32e04034020fca5687b6e0cede9d6ff1c4c0b3ccaddd4f1e8288080a8b1e39fe7cb173080c08ab7c688e8cb173a1007ec06c5852649016c62880a2995438240014a220a20dc96dbe3e13e8a1f947bc8e272c7f072863b0213d8412aadfc6dda6dfc55d4455249080210031a120a104e541ef671672fc6e36569aea25c6bd71a120a105ab49356330dfbbf28e089d56fa616d61a120a10e42c53edbbc9bd8b0d43f702ce6a162820012880f092cbdd0862600a120a104e541ef671672fc6e36569aea25c6bd71240b610e6788bec09a47d7a3364b919f01138613233b7e9ac3d68a70dfd9a78a5a118c1d07f6d688c63223f80a46a0dca3273b2bd8e3fbb34587ffb38f449c9b902188080a8b1e39fe7cb1762600a120a105ab49356330dfbbf28e089d56fa616d6124062eb262db42b17fdb834ea9d86a7fc07919db9db41a0f23f4663170cafbb20572465e110dd42ac32cd6369a43dca9a698446e2755ed01d28fa950a51da8c7a01188080a8b1e39fe7cb176a2c0a2a0a0a746578742f706c61696e121c6675747572656361737420696e7465726f7020766563746f722023317020",
+      "sealed_payload_proto_hex": "0a220a207062a42e8f640448549ed950e3af578d3772a4857b50ac377250851f23d5be321107000000000000001a20b60cb8dcc7337d1a3e53ffc1d87c0c4d6d3a9ec82def1aeb0505b0709100825122d703ae9d486db2aa70ae7db856e4a52357485266fb6014536906a79c0778db52e0927b228eb2c0be28d7e52e08848e58c1429dbcbbc340521ad6e01f6d91c20975c42a811d1fdea930c04fa4650d88521d6f7cdc65629a0e0ee3ce3e787953001d9906d8565910263b6fb362c7d6a81b1c0c2a09ef0f580d108da2c023edeec39275bd6676894e91202d3ce941f79c3e4e6ac1bfdfb217bc2667284e7b5d571ac2dbf1fb9a9abc157e1c0918e4a27f799d90f9d5907588bf3bb5c3288c09c03a1d375495ccc4f502cde99a9b5c7d8d182b016de6c232f0108890a2e809b8034276cc286b91f2b06f32ee49584634cf67c63640e4bf9098c66a241e02e5ea0340d9f8a209649f4bec11ee20ee089d87d2ce0fbf1ca3a0a68c524bac71fc82d8295ef4dabbdffc697bc84890152a466f7d892f7b44fde73213908ed97519ef8fd23c44cbec96e35c198403fb4aa6b6c167998a7bf9dc6ebbdfce2e73d7560c4853fca63c9393651f0e88c582c181ab37d7677fcdae79695f8a48ad32b22045d51a96927713f9b802df290a0f1d864e1005283bb320402ac76b17d6836d6b049b443423ab256387676d7eab402f54a1881a4bf76452017b53d6479513bda8e4e96d0613de40fe502197ec2449962ae02e4795d2a849724ae3a84129fa00000000000000",
+      "sealed_payload_signed_bytes_hex": "667574757265636173742f76312f7365616c65647061796c6f6164000a220a207062a42e8f640448549ed950e3af578d3772a4857b50ac377250851f23d5be321107000000000000001a20b60cb8dcc7337d1a3e53ffc1d87c0c4d6d3a9ec82def1aeb0505b0709100825122d703ae9d486db2aa70ae7db856e4a52357485266fb6014536906a79c0778db52e0927b228eb2c0be28d7e52e08848e58c1429dbcbbc340521ad6e01f6d91c20975c42a811d1fdea930c04fa4650d88521d6f7cdc65629a0e0ee3ce3e787953001d9906d8565910263b6fb362c7d6a81b1c0c2a09ef0f580d108da2c023edeec39275bd6676894e91202d3ce941f79c3e4e6ac1bfdfb217bc2667284e7b5d571ac2dbf1fb9a9abc157e1c0918e4a27f799d90f9d5907588bf3bb5c3288c09c03a1d375495ccc4f502cde99a9b5c7d8d182b016de6c232f0108890a2e809b8034276cc286b91f2b06f32ee49584634cf67c63640e4bf9098c66a241e02e5ea0340d9f8a209649f4bec11ee20ee089d87d2ce0fbf1ca3a0a68c524bac71fc82d8295ef4dabbdffc697bc84890152a466f7d892f7b44fde73213908ed97519ef8fd23c44cbec96e35c198403fb4aa6b6c167998a7bf9dc6ebbdfce2e73d7560c4853fca63c9393651f0e88c582c181ab37d7677fcdae79695f8a48ad32b22045d51a96927713f9b802df290a0f1d864e1005283bb320402ac76b17d6836d6b049b443423ab256387676d7eab402f54a1881a4bf76452017b53d6479513bda8e4e96d0613de40fe502197ec2449962ae02e4795d2a849724ae3a84129fa00000000000000"
+    },
+    "node_relay_sealed": {
+      "inner_body_proto_hex": "080110011a06616c6572747322220a203519444779a265e32e04034020fca5687b6e0cede9d6ff1c4c0b3ccaddd4f1e8288080a8b1e39fe7cb173080c08ab7c688e8cb173a1007ec06c5852649016c62880a2995438240014a220a20dc96dbe3e13e8a1f947bc8e272c7f072863b0213d8412aadfc6dda6dfc55d4455249080210031a120a104e541ef671672fc6e36569aea25c6bd71a120a105ab49356330dfbbf28e089d56fa616d61a120a10e42c53edbbc9bd8b0d43f702ce6a162820012880f092cbdd0862600a120a104e541ef671672fc6e36569aea25c6bd71240b610e6788bec09a47d7a3364b919f01138613233b7e9ac3d68a70dfd9a78a5a118c1d07f6d688c63223f80a46a0dca3273b2bd8e3fbb34587ffb38f449c9b902188080a8b1e39fe7cb1762600a120a105ab49356330dfbbf28e089d56fa616d6124062eb262db42b17fdb834ea9d86a7fc07919db9db41a0f23f4663170cafbb20572465e110dd42ac32cd6369a43dca9a698446e2755ed01d28fa950a51da8c7a01188080a8b1e39fe7cb176a2c0a2a0a0a746578742f706c61696e121c6675747572656361737420696e7465726f7020766563746f722023317020",
+      "inner_body_sha256_hex": "f768d575d8f43ab555910bd2841dbee2aaf5e5daf04ef131997403a8405959ec",
+      "sealed_payload_proto_hex": "0a220a20f768d575d8f43ab555910bd2841dbee2aaf5e5daf04ef131997403a8405959ec32bb03080110011a06616c6572747322220a203519444779a265e32e04034020fca5687b6e0cede9d6ff1c4c0b3ccaddd4f1e8288080a8b1e39fe7cb173080c08ab7c688e8cb173a1007ec06c5852649016c62880a2995438240014a220a20dc96dbe3e13e8a1f947bc8e272c7f072863b0213d8412aadfc6dda6dfc55d4455249080210031a120a104e541ef671672fc6e36569aea25c6bd71a120a105ab49356330dfbbf28e089d56fa616d61a120a10e42c53edbbc9bd8b0d43f702ce6a162820012880f092cbdd0862600a120a104e541ef671672fc6e36569aea25c6bd71240b610e6788bec09a47d7a3364b919f01138613233b7e9ac3d68a70dfd9a78a5a118c1d07f6d688c63223f80a46a0dca3273b2bd8e3fbb34587ffb38f449c9b902188080a8b1e39fe7cb1762600a120a105ab49356330dfbbf28e089d56fa616d6124062eb262db42b17fdb834ea9d86a7fc07919db9db41a0f23f4663170cafbb20572465e110dd42ac32cd6369a43dca9a698446e2755ed01d28fa950a51da8c7a01188080a8b1e39fe7cb176a2c0a2a0a0a746578742f706c61696e121c6675747572656361737420696e7465726f7020766563746f722023317020",
+      "sealed_payload_signed_bytes_hex": "667574757265636173742f76312f7365616c65647061796c6f6164000a220a20f768d575d8f43ab555910bd2841dbee2aaf5e5daf04ef131997403a8405959ec32bb03080110011a06616c6572747322220a203519444779a265e32e04034020fca5687b6e0cede9d6ff1c4c0b3ccaddd4f1e8288080a8b1e39fe7cb173080c08ab7c688e8cb173a1007ec06c5852649016c62880a2995438240014a220a20dc96dbe3e13e8a1f947bc8e272c7f072863b0213d8412aadfc6dda6dfc55d4455249080210031a120a104e541ef671672fc6e36569aea25c6bd71a120a105ab49356330dfbbf28e089d56fa616d61a120a10e42c53edbbc9bd8b0d43f702ce6a162820012880f092cbdd0862600a120a104e541ef671672fc6e36569aea25c6bd71240b610e6788bec09a47d7a3364b919f01138613233b7e9ac3d68a70dfd9a78a5a118c1d07f6d688c63223f80a46a0dca3273b2bd8e3fbb34587ffb38f449c9b902188080a8b1e39fe7cb1762600a120a105ab49356330dfbbf28e089d56fa616d6124062eb262db42b17fdb834ea9d86a7fc07919db9db41a0f23f4663170cafbb20572465e110dd42ac32cd6369a43dca9a698446e2755ed01d28fa950a51da8c7a01188080a8b1e39fe7cb176a2c0a2a0a0a746578742f706c61696e121c6675747572656361737420696e7465726f7020766563746f722023317020",
+      "note": "field 1 在此形状下不是 rendezvous 而是 inner_body 的 SHA-256 承诺值；node.Unseal 只校验该承诺值并直接解析 inner_body，完全不解密 ciphertext。"
+    },
+    "note": "路径A = 主题密钥封装（info=\"fc/v1/topickey\"，AD 由调用方给定）。路径B = 封存整条 SignedBody（info=\"fc/v1/sealed\"，AD=\"futurecast/v1/sealed\\x00\" || rendezvous || u64be(epoch)）。node_relay_sealed 是同名字段的另一种互不兼容用法（Finding F12）。两条封存路径的 info/AD 常量在 sealed.go 中都是未导出私有值，跨语言实现没有公开真源。sealed = nonce(12) || AES-256-GCM ciphertext||tag。"
+  },
+  "directed": {
+    "proto_version": 1,
+    "kind": 4,
+    "kind_name": "MESSAGE_KIND_DIRECTED_BROADCAST",
+    "topic": "alerts",
+    "media_type": "text/plain",
+    "created_at_unix_nanos": 1700000000000000000,
+    "expires_at_unix_nanos": 1700003600000000000,
+    "now_unix_nanos": 1700000000000000000,
+    "ttl_nanos": 3600000000000,
+    "nonce_hex": "aaead96e1edbe29fe452a31fac4ab31c",
+    "admin_set_generation": 1,
+    "signer_set_hash_hex": "dc96dbe3e13e8a1f947bc8e272c7f072863b0213d8412aadfc6dda6dfc55d445",
+    "policy": {
+      "threshold": 2,
+      "total": 3,
+      "root_key_ids_hex": [
+        "4e541ef671672fc6e36569aea25c6bd7",
+        "5ab49356330dfbbf28e089d56fa616d6",
+        "e42c53edbbc9bd8b0d43f702ce6a1628"
+      ],
+      "scheme": 1,
+      "scheme_name": "SIGNING_SCHEME_ED25519_MULTISIG",
+      "clock_skew_tolerance_nanos": 300000000000
+    },
+    "max_hops": 32,
+    "blind_salt_hex": "d7e63dfccba1ca781bb75171683f9c11",
+    "content_key_hex": "b94cb973b299640cb52911e16160dee1f5028c74b54ae8df89afde551059d5d2",
+    "blind_key_hex": "f3effb8041c26c150adc75e52fb7e93c3f9eb9db75260abc8a462020fd413c21",
+    "content_nonce_hex": "9c082e91358fae071d7b2d0c",
+    "ciphertext_hex": "aee2205e8cb88739acf64158e4e478f5ea0e6969380696db91be158a1b85c60fb701900891ae4a85c991f58bda69328da152e736432b69ce928ffaabcb521e9e2d1930e6c5cd8054509040ba5c08517dca8b466a9bae3dbbace2988ab2b47cfb7e03c083c7f2edf130a1b253d5a5e408e9633e56551e9b1ddfd39c10f12ef3721fa7c946e069f89e2a4b753edf47",
+    "recipient_count": 3,
+    "recipients": [
+      {
+        "index": 0,
+        "label": "alice",
+        "node_id_hex": "d649629c1e8a2686c63ec090f30db127ebb5c1883394640c47bede5781b75b05",
+        "ed25519_seed_hex": "24e17e8277ef7f1788899f7d42ba394815e4fb66ffb0542f18ba30df236ebb32",
+        "ed25519_pub_hex": "e0c03a220d355c7aad05746d2ccc8a4349368e0b2a2823872b228fcca04b0638",
+        "x25519_pub_hex": "569b22b955518e780acd7ad9fe5d25eea92c91a2d9d09c01450c3b659ad92801",
+        "eph_priv_hex": "1880d5d1e2c291e26878048d2e6cb17fb39c196a55e19c94e3d7119ade3f7ec9",
+        "eph_pub_hex": "08c0117b8c77452ce927107073a165b0425936a8c4d4eff51b0b4528c78a6e64",
+        "shared_secret_hex": "0d734360bd6520252a7112d7a1382a92a4ece12938dd1e97d587d3dcaa0aaf4e",
+        "wrap_key_hex": "38a7ba52362eff800ec5b19b9e0f3d990bf99a4777b5ef8eb9298abfb2aa673d",
+        "wrap_nonce_hex": "c61ebd8cbf96360f19e54cef",
+        "wrap_ad_hex": "667574757265636173742f76312f6469727772617000d7e63dfccba1ca781bb75171683f9c110000000000000000",
+        "wrapped_key_hex": "c61ebd8cbf96360f19e54cefeda913e4b5114bfc649b408ee278c8cc6d8e5f58526e021cffe2103d26d185a09a67d1a81f39d7079617c65d2cbe4e95",
+        "recipient_tag_hex": "17d2b279a930db65dfedd184cedf0b6e"
+      },
+      {
+        "index": 1,
+        "label": "bob",
+        "node_id_hex": "ac3c9af6cdb685a28f6489cb8b19ae099351a4d6d5e803297a2bc8cced2168d8",
+        "ed25519_seed_hex": "54b02d844261dfd365f2fe3aad447fd031df12bdb0c88344bb309c561840a724",
+        "ed25519_pub_hex": "7ddfadfb05ac0b872f78e9e8bbeeb2692043f18d958f55a68ad27aa61b044727",
+        "x25519_pub_hex": "903d6df5bbe5411be2cc883515de67eb774775150f7df227d2c511391329c577",
+        "eph_priv_hex": "68e2ae58e952f91433fc0d3c71b74c0f78f93638681215ffc539d6c3d07011c9",
+        "eph_pub_hex": "82f5100edd84d50df76b888fa358b6fbe19c76b22e2ea07ce7fe0d993dd1ad32",
+        "shared_secret_hex": "6709ffb87a2e99777dcbd6239c7852503ee97821993b401ac640f8d74cb5fc67",
+        "wrap_key_hex": "36fd4d6722d262503565a6d4510cd517a9953636fd845ac085b2e21c61edebac",
+        "wrap_nonce_hex": "1fb512f21f37ceb1db6d4fa6",
+        "wrap_ad_hex": "667574757265636173742f76312f6469727772617000d7e63dfccba1ca781bb75171683f9c110000000000000001",
+        "wrapped_key_hex": "1fb512f21f37ceb1db6d4fa604d254014e9a3a5b1ea760f2f9542b678b833e4a1f0fb04a7189988f0e766ad3d8fe1641457fa465e1980c304aabb532",
+        "recipient_tag_hex": "ad0087886087af009812c915911dd0fa"
+      },
+      {
+        "index": 2,
+        "label": "carol",
+        "node_id_hex": "4c2421439665c2cc6a92c3b52a391fb7c9d10ba179dd497670916246b03cc636",
+        "ed25519_seed_hex": "95e0a2ead0ba5cb687bee222f4a21ea3f28a2a2c273b039be26d1d173c5248cd",
+        "ed25519_pub_hex": "dd5bfcbdd8e8e9a0938079a535d646f0eabba87eb70d30e1601ce717541cd12e",
+        "x25519_pub_hex": "433ff671ebb2d02503a9d961a2f052a9bf3f6f204ecbae3fdfbd083c0aec4440",
+        "eph_priv_hex": "7ffb25ccb00d1fe6113581c31aff33621306b9d5bc972d62d5c2ef7471e0a8ab",
+        "eph_pub_hex": "3aab8403a5c5ee064a8b063b3c72df55175c68511b1a0175db58003592caa807",
+        "shared_secret_hex": "f9d61357cf650b76f0ba179d27f74ff49b0c65524174d2860c371832385e9346",
+        "wrap_key_hex": "05832c07dacb507e782269fc45dd8df9348b95cb40f4931963c8dc018f763e26",
+        "wrap_nonce_hex": "eaec8ee707ca3a469cd35aa7",
+        "wrap_ad_hex": "667574757265636173742f76312f6469727772617000d7e63dfccba1ca781bb75171683f9c110000000000000002",
+        "wrapped_key_hex": "eaec8ee707ca3a469cd35aa706fe3f172f5461399e24ce95f26d7224a6c26d87659a1f3e99e5c25638fc5500d4b5d6e76bad459db698efdd5c3193ba",
+        "recipient_tag_hex": "2440ebffe340c445979c9308119ab420"
+      }
+    ],
+    "kernel": {
+      "topic": "alerts",
+      "media_type": "text/plain",
+      "body": "futurecast directed interop vector #1",
+      "created_at_unix_nanos": 1700000000000000000,
+      "expires_at_unix_nanos": 1700003600000000000,
+      "nonce_hex": "479c7ce475d4aa05ee28659087b35596",
+      "proto_hex": "0a06616c65727473120a746578742f706c61696e1a256675747572656361737420646972656374656420696e7465726f7020766563746f72202331208080a8b1e39fe7cb172880c08ab7c688e8cb173210479c7ce475d4aa05ee28659087b35596",
+      "kernel_bytes_hex": "667574757265636173742f76312f64697265637465646b65726e656c000a06616c65727473120a746578742f706c61696e1a256675747572656361737420646972656374656420696e7465726f7020766563746f72202331208080a8b1e39fe7cb172880c08ab7c688e8cb173210479c7ce475d4aa05ee28659087b35596"
+    },
+    "directed_proto_hex": "08011004208080a8b1e39fe7cb172880c08ab7c688e8cb173210aaead96e1edbe29fe452a31fac4ab31c380142220a20dc96dbe3e13e8a1f947bc8e272c7f072863b0213d8412aadfc6dda6dfc55d4454a49080210031a120a104e541ef671672fc6e36569aea25c6bd71a120a105ab49356330dfbbf28e089d56fa616d61a120a10e42c53edbbc9bd8b0d43f702ce6a162820012880f092cbdd08502062720a2008c0117b8c77452ce927107073a165b0425936a8c4d4eff51b0b4528c78a6e64123cc61ebd8cbf96360f19e54cefeda913e4b5114bfc649b408ee278c8cc6d8e5f58526e021cffe2103d26d185a09a67d1a81f39d7079617c65d2cbe4e951a1017d2b279a930db65dfedd184cedf0b6e62720a2082f5100edd84d50df76b888fa358b6fbe19c76b22e2ea07ce7fe0d993dd1ad32123c1fb512f21f37ceb1db6d4fa604d254014e9a3a5b1ea760f2f9542b678b833e4a1f0fb04a7189988f0e766ad3d8fe1641457fa465e1980c304aabb5321a10ad0087886087af009812c915911dd0fa62720a203aab8403a5c5ee064a8b063b3c72df55175c68511b1a0175db58003592caa807123ceaec8ee707ca3a469cd35aa706fe3f172f5461399e24ce95f26d7224a6c26d87659a1f3e99e5c25638fc5500d4b5d6e76bad459db698efdd5c3193ba1a102440ebffe340c445979c9308119ab4206a8e01aee2205e8cb88739acf64158e4e478f5ea0e6969380696db91be158a1b85c60fb701900891ae4a85c991f58bda69328da152e736432b69ce928ffaabcb521e9e2d1930e6c5cd8054509040ba5c08517dca8b466a9bae3dbbace2988ab2b47cfb7e03c083c7f2edf130a1b253d5a5e408e9633e56551e9b1ddfd39c10f12ef3721fa7c946e069f89e2a4b753edf47720c9c082e91358fae071d7b2d0c7803820110d7e63dfccba1ca781bb75171683f9c11",
+    "directed_bytes_hex": "667574757265636173742f76312f6469726563746564626f64790008011004208080a8b1e39fe7cb172880c08ab7c688e8cb173210aaead96e1edbe29fe452a31fac4ab31c380142220a20dc96dbe3e13e8a1f947bc8e272c7f072863b0213d8412aadfc6dda6dfc55d4454a49080210031a120a104e541ef671672fc6e36569aea25c6bd71a120a105ab49356330dfbbf28e089d56fa616d61a120a10e42c53edbbc9bd8b0d43f702ce6a162820012880f092cbdd08502062720a2008c0117b8c77452ce927107073a165b0425936a8c4d4eff51b0b4528c78a6e64123cc61ebd8cbf96360f19e54cefeda913e4b5114bfc649b408ee278c8cc6d8e5f58526e021cffe2103d26d185a09a67d1a81f39d7079617c65d2cbe4e951a1017d2b279a930db65dfedd184cedf0b6e62720a2082f5100edd84d50df76b888fa358b6fbe19c76b22e2ea07ce7fe0d993dd1ad32123c1fb512f21f37ceb1db6d4fa604d254014e9a3a5b1ea760f2f9542b678b833e4a1f0fb04a7189988f0e766ad3d8fe1641457fa465e1980c304aabb5321a10ad0087886087af009812c915911dd0fa62720a203aab8403a5c5ee064a8b063b3c72df55175c68511b1a0175db58003592caa807123ceaec8ee707ca3a469cd35aa706fe3f172f5461399e24ce95f26d7224a6c26d87659a1f3e99e5c25638fc5500d4b5d6e76bad459db698efdd5c3193ba1a102440ebffe340c445979c9308119ab4206a8e01aee2205e8cb88739acf64158e4e478f5ea0e6969380696db91be158a1b85c60fb701900891ae4a85c991f58bda69328da152e736432b69ce928ffaabcb521e9e2d1930e6c5cd8054509040ba5c08517dca8b466a9bae3dbbace2988ab2b47cfb7e03c083c7f2edf130a1b253d5a5e408e9633e56551e9b1ddfd39c10f12ef3721fa7c946e069f89e2a4b753edf47720c9c082e91358fae071d7b2d0c7803820110d7e63dfccba1ca781bb75171683f9c11",
+    "directed_msg_id_hex": "7f954eb07ce78c232af62587d1cc3881d013a7544e231042e30ccd8de2d5301c",
+    "signers": [
+      {
+        "key_id_hex": "4e541ef671672fc6e36569aea25c6bd7",
+        "signed_at_unix_nanos": 1700000000000000000,
+        "sign_input_hex": "5868417ac8d5abf045efe6df589882750e2044271d7aeaa3662ecbec4ea92121",
+        "signature_hex": "46570d8bb6afe9e0910e7283604f0679b6210b7e76b640a6ed0f2693e0c3ed5c1927dd64910f9ef8575173b719f6c746b5eeba7ef7124c9da6534cf2be6c760e"
+      },
+      {
+        "key_id_hex": "5ab49356330dfbbf28e089d56fa616d6",
+        "signed_at_unix_nanos": 1700000000000000000,
+        "sign_input_hex": "af821c62136c1e73055254dde035b6eb88aaedc29d3b25f7f98b3bb71aa5a154",
+        "signature_hex": "e3362d60b1535ee713c8e1085bf82c1486a1bb2667ff19a18a95ded16c4a381583383ed2395d2f6cff7470d7e8eb1e0f6369e945f11f06b6e1f28b065b34df05"
+      }
+    ],
+    "envelope_msg_id_hex": "7f954eb07ce78c232af62587d1cc3881d013a7544e231042e30ccd8de2d5301c",
+    "envelope_first_seen_unix_nanos": 1700000000000000000,
+    "envelope_hops": 0,
+    "note": "签名覆盖 DirectedBody 除 msg_id(3)/signers(11) 外的全部字段；ciphertext 不含 nonce（nonce 在 content_nonce），wrapped_key 含 12 字节 nonce 前缀。recipients 里除 eph_pub/wrapped_key/recipient_tag 外的字段都是封端输入，不在线格式中。内核字段已冻结：field 7 已废弃，编码时不得出现。"
+  },
+  "relay_tag": {
+    "daily_key_hex": "734cfb4885c3f4019acfceeb071ea5c489b81e00051d6a15248bf93be9208553",
+    "msg_id_hex": "3519444779a265e32e04034020fca5687b6e0cede9d6ff1c4c0b3ccaddd4f1e8",
+    "previous_tags": [
+      0,
+      72623859790382856,
+      18446744073709551615
+    ],
+    "tags": [
+      9784991834777299650,
+      15901073919528680461,
+      13067339167825068489
+    ],
+    "formula": "HMAC-SHA256(dailyKey, \"futurecast/v1/relaytag\\x00\" || msgID(32) || uint64_be(previousTag))[0:8] 按大端解释为 uint64"
+  },
+  "negative_expectations": [
+    {
+      "id": "N1",
+      "attack": "声明本地未知的 admin_set_generation",
+      "expected_error": "ErrGenerationMismatch",
+      "pipeline_step": "5.1-4",
+      "construction": "用有效密钥对 gen=7 的伪造集合签名，msg_id/签名自洽"
+    },
+    {
+      "id": "N2",
+      "attack": "signer_set_hash 指向另一个 AdminSet",
+      "expected_error": "ErrSignerSetMismatch",
+      "pipeline_step": "5.1-5",
+      "construction": "本地注册 setA，消息由 setB 以同代数签名"
+    },
+    {
+      "id": "N3",
+      "attack": "同一把密钥的签名复制 N 份凑门限",
+      "expected_error": "ErrThresholdNotMet",
+      "pipeline_step": "5.1-6",
+      "construction": "同一 *pb.Signature 重复 3 次；同一 key_id 只计 1"
+    },
+    {
+      "id": "N4",
+      "attack": "篡改正文 1 字节（payload/topic/created_at）",
+      "expected_error": "ErrMsgIDMismatch",
+      "pipeline_step": "5.1-1",
+      "construction": "先改字节再校验；msg_id 首先不符（设计意图）"
+    },
+    {
+      "id": "N5",
+      "attack": "msg_id 与正文不符（正文或信封任一）",
+      "expected_error": "ErrMsgIDMismatch",
+      "pipeline_step": "5.1-1/2",
+      "construction": "分别篡改 body.msg_id 与 envelope.msg_id"
+    },
+    {
+      "id": "N6",
+      "attack": "过期 / created_at 超前（签名自洽）",
+      "expected_error": "ErrExpired / ErrClockSkew",
+      "pipeline_step": "5.1-3",
+      "construction": "先设置非法时间再签名，使签名与 msg_id 都有效"
+    },
+    {
+      "id": "N7",
+      "attack": "管理员消息携带 author 字段",
+      "expected_error": "非哨兵错误（F7）",
+      "pipeline_step": "5.1-6",
+      "construction": "签名前写入 author，使 msg_id 自洽；门限达标后才检查 author"
+    },
+    {
+      "id": "N8",
+      "attack": "节点消息由非 author 的密钥自签",
+      "expected_error": "ErrInvalidSignature / ErrPeerIDMismatch",
+      "pipeline_step": "5.1-7(已演进)",
+      "construction": "author=A 但签名 key_id 来自 B；author_pub 与 author 不符；无 author_pub 时会话公钥≠author"
+    },
+    {
+      "id": "N9",
+      "attack": "轮换链：代数跳号 / previous_set_hash 不符 / 旧集合仅 1 签 / 新集合自签",
+      "expected_error": "ErrGenerationMismatch / ErrThresholdNotMet",
+      "pipeline_step": "ValidateAdminSet",
+      "construction": "分别构造 gen=3、错误 prev hash、1 把旧密钥签名、2 把新密钥自签"
+    },
+    {
+      "id": "N10",
+      "attack": "重放：同一消息二次投递",
+      "expected_error": "注册表层无拒绝（F9）；store.Seen 拒绝",
+      "pipeline_step": "集成层 Seen→Verify",
+      "construction": "无 store 时两次均通过；接入 store 后第二次 Seen=false"
+    },
+    {
+      "id": "N11",
+      "attack": "定向广播只带 1/3 门限签名",
+      "expected_error": "ErrThresholdNotMet",
+      "pipeline_step": "E.3-8",
+      "construction": "签名与 msg_id 都自洽（signers 不参与 canonical），仅删到 1 个签名者"
+    },
+    {
+      "id": "N12",
+      "attack": "篡改定向广播 created_at",
+      "expected_error": "ErrMsgIDMismatch",
+      "pipeline_step": "E.3-3",
+      "construction": "created_at 参与签名覆盖，内容寻址先于时间窗检查"
+    },
+    {
+      "id": "N13",
+      "attack": "recipient_count 与槽位数不符",
+      "expected_error": "ErrMsgIDMismatch（直接篡改）/ ErrDirectedInvalid（重签自洽）",
+      "pipeline_step": "E.3-3 / E.3-7",
+      "construction": "直接改字段先被 msg_id 拦下；要触发结构检查必须改字段后重签并回填 msg_id"
+    },
+    {
+      "id": "N14",
+      "attack": "blind_salt 长度不是 16",
+      "expected_error": "Open: ErrDirectedInvalid；VerifyBody 当前不检查（F15）",
+      "pipeline_step": "E.3-7 / E.3-内层",
+      "construction": "重签自洽后外层仍被接受；只有 directed.Open 在 :243 报错"
+    },
+    {
+      "id": "N15",
+      "attack": "用另一个 AdminSet 校验定向广播",
+      "expected_error": "ErrSignerSetMismatch",
+      "pipeline_step": "E.3-6",
+      "construction": "另一套密钥组成的同代(gen=1)集合；代数检查通过后 signer_set_hash 不符"
+    },
+    {
+      "id": "N16",
+      "attack": "已过期的定向广播（签名自洽）",
+      "expected_error": "ErrExpired",
+      "pipeline_step": "E.3-4",
+      "construction": "now 取 expires_at 之后 2 小时"
+    },
+    {
+      "id": "N17",
+      "attack": "非收件人尝试解密定向广播",
+      "expected_error": "ErrNotAuthorized（正常结果，非故障）",
+      "pipeline_step": "E.3-9",
+      "construction": "陌生节点逐槽 unwrap 全部失败；Open 包装 ErrNotAuthorized"
+    },
+    {
+      "id": "N18",
+      "attack": "把 A 槽位的 wrapped_key 搬到 B 槽位",
+      "expected_error": "ErrNotAuthorized（谁也解不开）",
+      "pipeline_step": "E.3-9",
+      "construction": "wrap AD 含 u64be(i)，序号变了 GCM 认证失败；改后需重签才可送入 VerifyBody"
+    },
+    {
+      "id": "N19",
+      "attack": "把另一条消息的 eph_pub 移植过来",
+      "expected_error": "ErrNotAuthorized",
+      "pipeline_step": "E.3-9",
+      "construction": "eph_pub 变了 -\u003e 共享密钥变 -\u003e wrap_key 变 -\u003e unwrap 失败"
+    },
+    {
+      "id": "N20",
+      "attack": "同一收件人在两条消息里的 recipient_tag",
+      "expected_error": "必须不同（不可关联）",
+      "pipeline_step": "E.2",
+      "construction": "blind_salt 与 content_key 每消息独立随机，tag 无稳定标识"
+    }
+  ]
+}
