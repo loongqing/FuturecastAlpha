@@ -9,11 +9,13 @@
 - 设计说明书：[docs/DESIGN.md](docs/DESIGN.md)
 - 冻结接口契约：[docs/CONTRACTS.md](docs/CONTRACTS.md)
 
-> **先读这一句**：本项目当前处于 **M0/M1 之间的集成期**。
+> **先读这一句**：本项目当前处于 **M0/M1 之间的集成期**，但 **CLI 已经可用**。
 > `internal/` 下的密码学、注册表、存储、封存、传输、节点包已落地并有测试；
-> **`cmd/futurecast` CLI 尚未实现**（该目录还没有 `.go` 文件），因此
-> 下面所有 `futurecast ...` 命令目前**跑不起来**。`scripts/` 里的脚本会明确报出
-> 这个依赖并退出，不会伪造成功输出。以代码为准，不以本文的宣传口径为准。
+> `cmd/futurecast` 与 `internal/cli` 已实现全部子命令：`init` / `node` / `status` /
+> `peers` / `publish` / `verify`，以及 `admin keygen|set|rotate|compose|sign|finalize`。
+> 先 `make build` 即可构建。本文档中的所有命令形态都由 `scripts/demo.sh`
+> （三节点端到端演示）与 `scripts/selftest.sh` 实跑覆盖；脚本在依赖缺失时会明确报错
+> 退出，不会伪造成功输出。以代码为准，不以本文的宣传口径为准。
 
 ---
 
@@ -109,10 +111,10 @@ protoc --proto_path=proto \
 
 ---
 
-## 4. 快速开始（CLI 就绪后可用）
+## 4. 快速开始
 
-> 以下命令遵循 [CONTRACTS](docs/CONTRACTS.md) 与本仓库约定的 CLI 形态。
-> **当前 `cmd/futurecast` 尚未实现，执行会失败**；脚本会给出明确报错。
+> 以下命令遵循 [CONTRACTS](docs/CONTRACTS.md) 与本仓库约定的 CLI 形态，**均已实现**。
+> 先构建：`make build`（等价于 `go build -o bin/futurecast ./cmd/futurecast`）。
 
 ### 4.1 一键建网：生成 2-of-3 管理员密钥环
 
@@ -220,13 +222,16 @@ futurecast/
 ├── docs/CONTRACTS.md     冻结接口契约
 ├── proto/futurecast/v1/  唯一真相源：common.proto · message.proto · wire.proto
 ├── gen/futurecastv1/     protoc 生成（勿手改）
-├── cmd/futurecast/       CLI（node/publish/status/admin/verify）—— 尚未实现
+├── cmd/futurecast/       CLI（node/publish/status/admin/verify）—— 入口 main.go → internal/cli
 ├── internal/             codec · housekitchen · crypto · identity · registry
-│                         store · peer · sealed · transport · node
+│                         store · peer · sealed · transport · node · cli
+│                         · directed · conformance
 └── scripts/              keygen.sh · demo.sh · selftest.sh · Makefile.frag
 ```
 
 ## 7. 许可与状态
+
+本项目以 **MIT 许可**发布，全文见 [LICENSE](LICENSE)。
 
 当前为内部开发阶段（M0→M1），接口仍可能破坏性变更——
 每一次线格式变更都会同步更新 [PROTOCOL](docs/PROTOCOL.md) 的版本说明。

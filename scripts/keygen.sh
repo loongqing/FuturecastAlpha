@@ -2,7 +2,7 @@
 #
 # FutureCast — 生成 2-of-3 超级管理员密钥环 + 创世 AdminSet。
 #
-# 依赖：futurecast CLI（cmd/futurecast，当前尚未实现）。
+# 依赖：futurecast CLI（cmd/futurecast，已实现）。
 #       CLI 不存在时本脚本明确报错退出（exit 2），绝不伪造成功输出。
 #
 # 用法：
@@ -81,11 +81,11 @@ if ! BIN="$(resolve_bin)"; then
 依赖说明：
   * 本脚本依赖 `futurecast admin keygen --out <dir> --threshold N --total M`
     （见 docs/CONTRACTS.md 与 Lead 约定的 CLI 形态）。
-  * 撰写本脚本时 `cmd/futurecast/` 目录下还没有任何 .go 文件，CLI 尚未实现。
+  * CLI 已实现：在仓库根目录执行 `make build` 即可得到 ./bin/futurecast。
 
 可选处理：
-  1) 等 CLI 落地后重跑；
-  2) 若你已自己构建：FUTURECAST_BIN=/path/to/futurecast scripts/keygen.sh ...
+  1) 在仓库根目录执行 `make build` 后重跑本脚本；
+  2) 若你已在别处构建：FUTURECAST_BIN=/path/to/futurecast scripts/keygen.sh ...
   3) 或把二进制放到 ./bin/futurecast。
 
 本脚本不会用其他方式"凑出"密钥环，也不会输出伪造的成功信息。
